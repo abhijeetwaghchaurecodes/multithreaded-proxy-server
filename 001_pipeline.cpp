@@ -14,7 +14,7 @@ void pipeline(const char* process1, const char* process2){
         close(fd[1]);  //close the WRITE end of the pipe
 
         //execute process1
-        execlp("/bin/cat", "cat", "main.cpp", nullptr);
+        execlp("/bin/cat", "cat", "001_pipeline.cpp", nullptr);
         std::cerr << "failed to execute" << process1 << std::endl;
 
     }
