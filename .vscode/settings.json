@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "inet.h": "c",
+        "fcntl.h": "c",
+        "semaphore.h": "c"
+    }
+}
