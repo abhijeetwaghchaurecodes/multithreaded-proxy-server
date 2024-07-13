@@ -15,7 +15,9 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <time.h>
+
 #define MAX_CLIENTS 10
+#define MAX_BYTES 4096
 
 
 
@@ -47,6 +49,76 @@ pthread_mutex_t lock;
 cache_element* head;
 int cache_size;
 
+
+int thread_fn(void *socketNew){
+    sem_wait(&semaphore);
+    int p;
+    sem_getvalue(&semaphore, p); //if semaphore value is -1 then its in USE, otherwise we can use it(for +ve values)
+    printf("semaphore value is %d\n", p);
+    int *t = (int*) socketNew;
+    int socket = *t;    //gettinng the value from the POINTER
+    int bytes_send_client, len;  //BYTES and LEN of it sent by CLIENT during a HTTP request
+
+
+    char *buffer = (char *)calloc(MAX_BYTES, sizeof(char));
+    bzero(buffer, MAX_BYTES);
+    bytes_send_client = recv(socket, buffer, MAX_BYTES, 0);
+
+    while (bytes_send_client > 0)
+    {
+        len = strlen(buffer);
+        if(strstr(buffer, "\r\n\r\n") == NULL){  //checking if the BUFFER contains some values or if its EOF
+            bytes_send_client = recv(socket, buffer + len, MAX_BYTES - len, 0);  //receiving the available bytes on the socket
+        }else{ //otherwise break the LOOP
+            break;  
+        }
+    }
+
+
+    //below creating a copy of BUFFER into a tempReq to search in the LRU cache
+    char *tempReq = (char*)malloc(strlen(buffer)*sizeof(char)+1);
+    for(int i = 0; i < strlen(buffer); i++){
+        tempReq[i] = buffer[i];
+    }
+
+    struct cache_element *temp = find(tempReq);  //finding the 'tempReq' in the CACHE
+
+    if(temp != NULL){ //till the temp ptr is NULL
+        int size = temp->len/sizeof(char);  
+        int pos = 0;
+        char response[MAX_BYTES];
+        while (pos < size)    //this loop will send the requested URL to the socket
+        {
+            bzero(response, MAX_BYTES);
+            for(int i = 0; i < MAX_BYTES; i++){
+                response[i] = temp->data[i];
+                pos++;
+            }
+            
+            send(socket, response, MAX_BYTES, 0);  //this will send the response bytes to the SOCKET if any bytes exits/remaining 
+        }
+
+        printf("data retrieved from cache\n");
+        printf("%s\n\n", response);
+        
+    }else if(bytes_send_client > 0){
+        len = strlen(buffer);
+        ParsedRequest *request = ParsedRequest_create();
+
+        if(ParsedRequest_parse(request, buffer, len) < 0){
+            printf("parsing failed\n");
+        }else{
+            bzero(buffer, MAX_BYTES);
+            if{}
+        }
+    }
+    
+
+    
+
+
+}
+
 int main(int argc, char* argv[]){
     int client_socketId, client_len;
     struct sockaddr_in server_addr, client_addr;
@@ -68,6 +140,8 @@ int main(int argc, char* argv[]){
         perror("failed to create a socket\n");
         exit(1);
     }
+
+    //the below code helps us to check for the ADDRESS already in use ERRORS-
     int reuse = 1;
     if(setsockopt(proxy_socketId, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0){
         perror("setSockOpt failed\n");
@@ -76,10 +150,10 @@ int main(int argc, char* argv[]){
     bzero((char*)&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port_number);   //assigning PORT to the PROXY
-    server_addr.sin_addr.s_addr = INADDR_ANY; //any available address assigned
+    server_addr.sin_addr.s_addr = INADDR_ANY; //allowing the server to accept connections from any network interface.
 
     // Binding the socket
-	if( bind(proxy_socketId, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0 )
+	if( bind(proxy_socketId, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0 ) //assigning a name to a socket
 	{
 		perror("Port is not available\n");
 		exit(1);
